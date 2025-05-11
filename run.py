@@ -67,6 +67,11 @@ def run(args):
         os.environ["CUDA_VISIBLE_DEVICES"]= cfg.device.split(":")[-1]
         device = torch.device('cuda')
         device_type = 'cuda'
+    elif str(cfg.device) == 'cuda':
+        device = torch.device('cuda')
+        device_type = 'cuda'
+
+    print(f"using device: {cfg.device}")
     
     # Data type & device
     dtype = 'float16' if not torch.cuda.is_bf16_supported() else 'bfloat16'
