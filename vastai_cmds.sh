@@ -15,5 +15,3 @@ exec bash
 cd position-coupling
 
 conda activate NLP
-
-python run.py
