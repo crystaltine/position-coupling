@@ -4,7 +4,7 @@ curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o
 
 export PATH="/content/miniconda/bin:$PATH"
 
-cd position-coupling
+cd ./position-coupling/
 
 conda env create -f env.yaml
 
