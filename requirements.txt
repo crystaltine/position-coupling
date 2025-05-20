@@ -1,7 +1,6 @@
 aiohappyeyeballs
 aiohttp
 aiosignal
-antlr-python-runtime
 anyio
 appdirs
 argon2-cffi
