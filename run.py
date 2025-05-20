@@ -19,6 +19,7 @@ from transformers import get_scheduler
 import wandb
 from warnings import filterwarnings
 filterwarnings("ignore")
+from time import perf_counter
 
 from src.tokenization import build_tokenizer
 from src.data import build_dataset, build_loader
@@ -72,6 +73,7 @@ def run(args):
         device_type = 'cuda'
 
     print(f"using device: {cfg.device}")
+    print(f"config: {cfg}")
     
     # Data type & device
     dtype = 'float16' if not torch.cuda.is_bf16_supported() else 'bfloat16'
@@ -164,9 +166,13 @@ def run(args):
     losses = {phase: [] for phase in phases}
     tokenwise_accuracies = {phase: [] for phase in phases}
     instancewise_accuracies = {phase: [] for phase in phases}
+    times = {phase: [] for phase in phases}
     
     ## Train! ##
     counter_training = 0
+
+    checkpoint_data = { key: {phase: [] for phase in phases} for key in ['losses', 'tokenwise', 'instancewise', 'times'] }
+
     for epoch in range(1, n_epochs+1):
         if counter_training >= n_steps: break
         for phase in phases:
@@ -179,6 +185,10 @@ def run(args):
                 tokenwise_correct_sum = 0
                 num_tokens_sum = 0
                 instancewise_correct_sum = 0
+
+                _checkpoint_times = {phase: 0 for phase in phases}
+
+            _start_t = perf_counter()
             for batch_idx, model_inputs in enumerate(pbar):
                 if "IndexHints" in cfg.task.train.dataset_cls and cfg.task.get('hide_index_hints', False):
                     model_inputs['labels'] = torch.where(
@@ -210,36 +220,36 @@ def run(args):
                 with torch.no_grad():
                     batchsize = len(model_inputs['input_ids'])
                     loss_sum += loss.float() * batchsize
-                    if not use_wandb and batch_idx == 0:
-                        logits = model_output.logits
-                        pred = torch.argmax(logits, dim=-1)
-                        d_positions = getattr(cfg.model, 'd_positions', None)
-                        print(phase.upper())
-                        if d_positions is None:
-                            print("Input     :", model_inputs['input_ids'][0].cpu().numpy() - id_0)
-                            if 'position_ids' in model_inputs:
-                                print("Position  :", model_inputs['position_ids'][0].cpu().numpy())
-                            if model_name in DECODER_BASED:
-                                lab = model_inputs['labels'][0, 1:]
-                                print("Prediction:", pred[0, :-1][lab != -100].cpu().numpy() - id_0)
-                            else:
-                                lab = model_inputs['labels'][0]
-                                print("Prediction:", pred[0][lab != -100].cpu().numpy() - id_0)
-                            print("Label     :", lab[lab != -100].cpu().numpy() - id_0)
-                        elif not cfg.task.train.dataset_cls.startswith("MineSweeper"):
-                            print("Input     :", model_inputs['input_ids'][0].cpu().numpy() - id_0)
-                            if 'position_ids' in model_inputs:
-                                print("Position  :", model_inputs['position_ids'][:, 0].cpu().numpy())
-                            if model_name in DECODER_BASED:
-                                lab = model_inputs['labels'][0, 1:]
-                                print("Prediction:", pred[0, :-1][lab != -100].cpu().numpy() - id_0)
-                            else:
-                                lab = model_inputs['labels'][0]
-                                print("Prediction:", pred[0][lab != -100].cpu().numpy() - id_0)
-                            print("Label     :", lab[lab != -100].cpu().numpy() - id_0)
-                        else: # e.g. Minesweeper with coupling
-                            assert model_name in DECODER_BASED
-                            print_2D(model_inputs, pred, id_0)
+                    # if not use_wandb and batch_idx == 0:
+                        # logits = model_output.logits
+                        # pred = torch.argmax(logits, dim=-1)
+                        # d_positions = getattr(cfg.model, 'd_positions', None)
+                        # print(phase.upper())
+                        # if d_positions is None:
+                        #     print("Input     :", model_inputs['input_ids'][0].cpu().numpy() - id_0)
+                        #     if 'position_ids' in model_inputs:
+                        #         print("Position  :", model_inputs['position_ids'][0].cpu().numpy())
+                        #     if model_name in DECODER_BASED:
+                        #         lab = model_inputs['labels'][0, 1:]
+                        #         print("Prediction:", pred[0, :-1][lab != -100].cpu().numpy() - id_0)
+                        #     else:
+                        #         lab = model_inputs['labels'][0]
+                        #         print("Prediction:", pred[0][lab != -100].cpu().numpy() - id_0)
+                        #     print("Label     :", lab[lab != -100].cpu().numpy() - id_0)
+                        # elif not cfg.task.train.dataset_cls.startswith("MineSweeper"):
+                        #     print("Input     :", model_inputs['input_ids'][0].cpu().numpy() - id_0)
+                        #     if 'position_ids' in model_inputs:
+                        #         print("Position  :", model_inputs['position_ids'][:, 0].cpu().numpy())
+                        #     if model_name in DECODER_BASED:
+                        #         lab = model_inputs['labels'][0, 1:]
+                        #         print("Prediction:", pred[0, :-1][lab != -100].cpu().numpy() - id_0)
+                        #     else:
+                        #         lab = model_inputs['labels'][0]
+                        #         print("Prediction:", pred[0][lab != -100].cpu().numpy() - id_0)
+                        #     print("Label     :", lab[lab != -100].cpu().numpy() - id_0)
+                        # else: # e.g. Minesweeper with coupling
+                        #     assert model_name in DECODER_BASED
+                        #     print_2D(model_inputs, pred, id_0)
                     if epoch % calc_acc_every_epochs == 0 or epoch == n_epochs:
                         logits = model_output.logits
                         pred = torch.argmax(logits, dim=-1)
@@ -252,6 +262,8 @@ def run(args):
                                             f"TokenAcc:{tokenwise_correct/num_tokens:.3f} | InstAcc:{instancewise_correct/batchsize:.3f}") 
                     else:
                         pbar.set_description(f"[{counter_training}/{n_steps}] {phase.upper()} | LR:{scheduler.get_last_lr()[0]:.3g} | Loss:{loss:.3f}")        
+            epoch_time = perf_counter() - _start_t
+            
             # Logging at the end of epoch
             loss_avg = loss_sum.item()/len(dataset[phase])
             losses[phase].append(loss_avg)
@@ -263,6 +275,14 @@ def run(args):
                 # if getattr(cfg.model, 'd_positions', None) is None:
                 #     _, _, _, example = print_example(cfg, ctx, epoch, phase, tokenizer, dataset, model, verbose=False)
                 #     print(example)
+            
+            # log checkpoint data
+            print(f"({epoch=}): logging data for {phase}... {loss_avg:.3g} | {tokenwise_accuracy_avg:.3g} | {instancewise_accuracy_avg:.3g} | {epoch_time:.3g}")
+            checkpoint_data['losses'][phase].append(loss_avg)
+            checkpoint_data['tokenwise'][phase].append(tokenwise_accuracy_avg)
+            checkpoint_data['instancewise'][phase].append(instancewise_accuracy_avg)
+            checkpoint_data['times'][phase].append(epoch_time)
+
             # W&B
             if use_wandb:
                 log_data = {'loss': loss_avg}
@@ -282,7 +302,8 @@ def run(args):
                       f"InstAcc {instancewise_accuracy_avg:.6f}")
             else:
                 print(f"Epoch {epoch}/{n_epochs} {phase.upper()} Loss {loss_avg:.6f} ")
-            # Plot results
+
+            # Plot results                        
             if phase == phases[-1] and epoch % calc_acc_every_epochs == 0:
                 fig, ax = plt.subplots(1,1) 
                 for p in phases:
@@ -321,6 +342,35 @@ def run(args):
         
         print()
     
+    checkpoints_details_f = os.path.join(logging_path, f"epoch_details.txt")
+    n_checkpoints = len(checkpoint_data['losses']['train'])
+    with open(checkpoints_details_f, 'w') as f:
+        
+        print(f"{n_steps} steps total, {n_checkpoints} checkpoints logged", file=f)
+        print("==========", file=f)
+
+        print(f"train/eval times (checkpoint#/train/val/val_long)\n", file=f)
+        for i in range(n_checkpoints):
+            f.write(f"{i+1},{checkpoint_data['times']['train'][i]},{checkpoint_data['times']['val'][i]},{checkpoint_data['times']['val_long'][i]}\n")
+
+        print("==========", file=f)
+
+        print(f"losses (checkpoint#/train/val/val_long)", file=f)
+        for i in range(n_checkpoints):
+            f.write(f"{i+1},{checkpoint_data['losses']['train'][i]},{checkpoint_data['losses']['val'][i]},{checkpoint_data['losses']['val_long'][i]}\n")
+
+        print("==========", file=f)
+
+        print(f"tokenwise acc (checkpoint#/train/val/val_long)", file=f)
+        for i in range(n_checkpoints):
+            f.write(f"{i+1},{checkpoint_data['tokenwise']['train'][i]},{checkpoint_data['tokenwise']['val'][i]},{checkpoint_data['tokenwise']['val_long'][i]}\n")
+
+        print("==========", file=f)
+
+        print(f"instancewise acc (checkpoint#/train/val/val_long)", file=f)
+        for i in range(n_checkpoints):
+            f.write(f"{i+1},{checkpoint_data['instancewise']['train'][i]},{checkpoint_data['instancewise']['val'][i]},{checkpoint_data['instancewise']['val_long'][i]}\n")
+
     # Finish W&B
     if use_wandb:
         # if getattr(cfg.model, 'd_positions', None) is None:
@@ -343,8 +393,8 @@ def run(args):
     if save:
         torch.save(model.state_dict(), os.path.join(logging_path, f"last_{model_name}.pt"))
 
-
 if __name__ == '__main__':
+    
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument('--config_path', type=str,    default='./configs')
     parser.add_argument('--config_name', type=str,    default='config') 
