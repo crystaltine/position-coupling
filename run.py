@@ -60,6 +60,7 @@ def run(args):
             json.dump(dict_cfg, f, indent=2)
 
     # device
+    device_type = ...
     if cfg.device=='cpu':
         device = torch.device('cpu')
         device_type = 'cpu'
@@ -71,6 +72,10 @@ def run(args):
     elif str(cfg.device) == 'cuda':
         device = torch.device('cuda')
         device_type = 'cuda'
+    else:
+        print(f"Invalid device type {cfg.device}, using CPU instead.")
+        device = torch.device('cpu')
+        device_type = 'cpu'
 
     print(f"using device: {cfg.device}")
     print(f"config: {cfg}")
@@ -105,7 +110,7 @@ def run(args):
         dataset = build_dataset_varied(cfg)
     else:
         dataset = build_dataset(cfg)
-        
+
     loader = build_loader(cfg, dataset, tokenizer, device)
 
     # Random seed for model & training
