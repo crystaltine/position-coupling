@@ -15,7 +15,45 @@ from src.data.multiplication import *
 from src.data.copy import *
 from src.data.parity import *
 from src.data.minesweeper import *
+from src.data.varied_arithmetic import VariedDatasetWithCoupledPositions
 
+def build_dataset_varied(cfg):
+    task_cfg = OmegaConf.to_container(cfg.task)
+
+    dataset = {}
+    phases = ['train'] + [k for k in task_cfg.keys() if k.startswith('val')]
+
+    common_task_cfg = task_cfg.copy()
+    for k in phases:
+        if k in common_task_cfg:
+            common_task_cfg.pop(k)
+
+    for phase in phases:
+        if phase not in task_cfg:
+            continue
+        print(f"{phase}...")
+        dataset[phase] = VariedDatasetWithCoupledPositions(
+            **task_cfg[phase],
+            **common_task_cfg,
+            pattern="+-+"
+        )
+
+    print()
+    
+    ## Store datasets ##
+    data_path = f"./dataset/seed{cfg.seed_data}"
+    if not os.path.exists(data_path): 
+        os.makedirs(data_path)
+    for phase in dataset.keys():
+        pbar = tqdm(dataset[phase], disable=False)
+        with open(f"{data_path}/{phase}_input.txt", "w") as f_i, \
+            open(f"{data_path}/{phase}_label.txt", "w") as f_o:
+            for i, item in enumerate(pbar):
+                if i >= 100: break
+                input, label = item[:2]
+                f_i.write(input+"\n")
+                f_o.write(label+"\n")
+    return dataset
 
 ## Build Dataset (train / val / val_long)
 def build_dataset(cfg, verbose=True):
@@ -32,10 +70,15 @@ def build_dataset(cfg, verbose=True):
         if k in common_task_cfg:
             common_task_cfg.pop(k)
     if verbose: print("Preparing Dataset...")
+    
+    print(f"[build_dataset]: phases = {phases}")
+    print(f"[build_dataset]: common_task_cfg = {common_task_cfg}")
+    
     for phase in phases:
         if phase not in task_cfg:
             continue
         if verbose: print(f"{phase}...")
+        print(f"[build_dataset] phase={phase}, eval'ing: {task_cfg[phase]['dataset_cls']}")
         dataset_cls = eval(task_cfg[phase].pop('dataset_cls'))
         dataset[phase] = dataset_cls(
             operation=operation, 

@@ -1,0 +1,30 @@
+symbol: '+'
+reverse_input: False
+reverse_output: True
+eos: True
+bos_to_eos: True
+padding: True
+pad_token: '0'
+max_position: 200
+
+train:
+  dataset_cls: VariedDatasetWithCoupledPositions
+  min_n_digits: 1
+  max_n_digits: 20
+  n_data: 100000
+  randomize: True
+
+val:
+  dataset_cls: VariedDatasetWithCoupledPositions
+  min_n_digits: 20
+  max_n_digits: 20
+  n_data: 10000
+  randomize: False
+
+val_long:
+  dataset_cls: VariedDatasetWithCoupledPositions
+  min_n_digits: 40
+  max_n_digits: 40
+  n_data: 10000
+  randomize: False
+  hard_carry: False

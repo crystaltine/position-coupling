@@ -100,7 +100,12 @@ def tokenize_for_decoder(
 
     out = {}
     concat = [f"{inp} = {lab}" for inp, lab in zip(inputs, labels)]
+
+    # print(f"[DEBUG] concat[0]: {concat[0]}")
+
     out['input_ids'] = np.array([enc.ids for enc in tokenizer.encode_batch(concat)])
+
+    # print(f"[DEBUG] encoded batch[0]: {tokenizer.encode_batch(concat)[0]}")
 
     # labels: it is -100 except for the label part of the sequence.
     # "tokenizer.eos_token == SpecialToken.eos" is equivalent to "cfg.task.eos == True"
@@ -131,6 +136,12 @@ def tokenize_for_decoder(
             position_ids = np.zeros((batchsize, total_length), dtype=int)
             for b, (inp_pos, lab_pos) in enumerate(zip(input_positions, label_positions)):
                 pos = inp_pos + lab_pos
+
+                # print(f"===== INP_POS: {inp_pos}, (len {len(inp_pos)})")
+                # print(f"===== LAB_POS: {lab_pos}, (len {len(lab_pos)})")
+
+                # print(f"\x1b[34mTOKENIZATION: {pos=} (len {len(pos)}), {position_ids=} (shape {position_ids.shape})\x1b[0m")
+
                 position_ids[b, 1:1+len(pos)] = np.array(pos, dtype=int)
         elif np.array(input_positions[0]).ndim == 2:  # multi dimensional position ids
             position_id_dim = len(input_positions[0])

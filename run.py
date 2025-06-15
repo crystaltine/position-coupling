@@ -22,7 +22,7 @@ filterwarnings("ignore")
 from time import perf_counter
 
 from src.tokenization import build_tokenizer
-from src.data import build_dataset, build_loader
+from src.data import build_dataset, build_loader, build_dataset_varied
 from src.model import build_model_from_scratch, DECODER_BASED
 from src.training import get_custom_cosine_schedule_with_warmup, get_custom_linear_schedule_with_warmup, set_seed
 from src.evaluate import get_tokenwise_accuracy, get_instancewise_accuracy
@@ -99,7 +99,13 @@ def run(args):
     set_seed(seed=cfg.seed_data, device_type=device_type)
 
     # Dataset / Dataloader
-    dataset = build_dataset(cfg)
+
+    dataset = ...
+    if cfg['task']['train']['dataset_cls'] == "VariedDatasetWithCoupledPositions":
+        dataset = build_dataset_varied(cfg)
+    else:
+        dataset = build_dataset(cfg)
+        
     loader = build_loader(cfg, dataset, tokenizer, device)
 
     # Random seed for model & training
@@ -167,7 +173,7 @@ def run(args):
     tokenwise_accuracies = {phase: [] for phase in phases}
     instancewise_accuracies = {phase: [] for phase in phases}
     times = {phase: [] for phase in phases}
-    
+
     ## Train! ##
     counter_training = 0
 
@@ -179,6 +185,9 @@ def run(args):
             model.train(phase == 'train')
             if phase != 'train' and not (epoch%calc_acc_every_epochs == 0 or epoch == n_epochs): continue
             # Training Epoch
+
+            print(f"\x1b[34mloader[phase] is {len(loader[phase])} batches!!\x1b[0m")
+
             pbar = tqdm(loader[phase])
             loss_sum = 0.
             if epoch % calc_acc_every_epochs == 0 or epoch == 1:

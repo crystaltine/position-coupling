@@ -192,6 +192,8 @@ class AdditionDatasetWithCoupledPositions(AdditionDataset):
         super().__init__(n_data, min_n_digits, max_n_digits,
             reverse_input, reverse_output, padding, pad_token,
             **kwargs)
+        
+        # print(f"on init: inputs= {self.inputs}, labels={self.labels}")
 
     def __getitem__(self, index):
         inputs = self.inputs[index]
@@ -204,13 +206,19 @@ class AdditionDatasetWithCoupledPositions(AdditionDataset):
         else:
             # modified: least significant digit has least position ID
             start = 1 if not self.randomize else torch.randint(1, self.max_position-len(labels)+(1 if self.reverse_output else 0), size=(1,)).item()
+            # print(f"Addition.__get__item: {start=}, inps: {inputs}, labels: {labels}")
             plus_position = start
             a_positions = list(range(start+1, start+1+len(a)))
             b_positions = list(range(start+1, start+1+len(b)))
+
+            # print(f"initial a and b_positions before reversecheck: {a_positions=}, {b_positions=}")
             if not self.reverse_input:
                 a_positions = a_positions[::-1]
                 b_positions = b_positions[::-1]
             input_positions = a_positions + [plus_position] + b_positions
+
+            # print(f"input_positions after reversecheck: {input_positions=}")
+
             ans_positions = list(range(start+1, start+1+len(labels)))
             if self.reverse_output:
                 eq_position = start
@@ -222,6 +230,9 @@ class AdditionDatasetWithCoupledPositions(AdditionDataset):
         # Put white spaces
         inputs = " ".join(inputs).replace('P', str(self.pad_token))
         labels = " ".join(labels).replace('P', str(self.pad_token))
+
+        print(f"(debug) {inputs=} {labels=}")
+
         return inputs, labels, input_positions, label_positions
     
 

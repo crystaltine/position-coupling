@@ -10,5 +10,5 @@ use_wandb: False
 defaults:
 - _self_
 - model: CustomT5DecoderOnly
-- task: addition_coupled
+- task: varied_coupled
 - training: default
